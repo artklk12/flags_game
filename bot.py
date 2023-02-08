@@ -163,41 +163,59 @@ async def wait_for_ready_both(message: types.Message, state: FSMContext):
             oponent_id = data['oponent']
             data['cur_answer'] = None
             data['after_round_delete'] = []
-
-        oponent_state = dp.current_state(chat=oponent_id, user=oponent_id)
-        async with oponent_state.proxy() as data:
-            oponent_ready = data['ready']
-
-        if not oponent_ready:
-            async with state.proxy() as data:
-                last_msg_id = data['last_bot_msg_id']
-            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
-            msg = await bot.send_message(chat_id=message.chat.id, text="Ждём, пока противник нажмёт НАЧАТЬ МАТЧ")
-            async with state.proxy() as data:
-                data['last_bot_msg_id'] = msg.message_id
-
+        async with state.proxy() as data:
+            ready = data['ready']
+        if ready:
+            oponent_state = dp.current_state(chat=oponent_id, user=oponent_id)
+            async with oponent_state.proxy() as data:
+                oponent_ready = data['ready']
+            if not oponent_ready:
+                try:
+                    async with state.proxy() as data:
+                        last_msg_id = data['last_bot_msg_id']
+                    await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+                    msg = await bot.send_message(chat_id=message.chat.id, text="Ждём, пока противник нажмёт НАЧАТЬ МАТЧ")
+                    async with state.proxy() as data:
+                        data['last_bot_msg_id'] = msg.message_id
+                except Exception:
+                    await asyncio.sleep(1)
+            else:
+                await state.set_state(ClientStatesGroup.round1)
+                await oponent_state.set_state(ClientStatesGroup.round1)
+                async with state.proxy() as data:
+                    last_msg_id = data['last_bot_msg_id']
+                    data['ready'] = False
+                async with oponent_state.proxy() as data:
+                    opponent_last_msg_id = data['last_bot_msg_id']
+                    data['ready'] = False
+                try:
+                    await bot.delete_message(chat_id=oponent_id, message_id=opponent_last_msg_id)
+                except Exception:
+                    await asyncio.sleep(1)
+                try:
+                    await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
+                except Exception:
+                    await asyncio.sleep(1)
+                await asyncio.sleep(1)
+                p1_time = await bot.send_message(chat_id=message.chat.id, text=f"Матч начинается")
+                p2_time = await bot.send_message(chat_id=oponent_id, text=f"Матч начинается")
+                for second in range(1, 4):
+                    await asyncio.sleep(0.5)
+                    await p1_time.edit_text("Матч начинается" + '.' * second)
+                    await p2_time.edit_text("Матч начинается" + '.' * second)
+                await p1_time.edit_text("Матч начался")
+                await p2_time.edit_text("Матч начался")
+                round_info = json.loads(requests.get(f'http://127.0.0.1:8000/game/{match_id}/get_round/{round_id}').text)
+                p1_msg1_del = await bot.send_photo(chat_id=message.chat.id, photo=round_info['image'], reply_markup=get_answers_keyboard(round_info['answers']))
+                p2_msg1_del = await bot.send_photo(chat_id=oponent_id, photo=round_info['image'], reply_markup=get_answers_keyboard(round_info['answers']))
+                async with state.proxy() as data:
+                    data['after_round_delete'].append(p1_msg1_del)
+                    data['ready'] = True
+                async with oponent_state.proxy() as data:
+                    data['after_round_delete'].append(p2_msg1_del)
+                    data['ready'] = True
         else:
-            await state.set_state(ClientStatesGroup.round1)
-            await oponent_state.set_state(ClientStatesGroup.round1)
-            await asyncio.sleep(1)
-            async with state.proxy() as data:
-                last_msg_id = data['last_bot_msg_id']
-            await bot.delete_message(chat_id=message.chat.id, message_id=last_msg_id)
-            async with oponent_state.proxy() as data:
-                opponent_last_msg_id = data['last_bot_msg_id']
-            await bot.delete_message(chat_id=oponent_id, message_id=opponent_last_msg_id)
-            await bot.send_message(chat_id=message.chat.id, text=f"Матч начинается")
-            await bot.send_message(chat_id=oponent_id, text=f"Матч начинается")
-            await asyncio.sleep(3)
-            round_info = json.loads(requests.get(f'http://127.0.0.1:8000/game/{match_id}/get_round/{round_id}').text)
-            p1_msg1_del = await bot.send_photo(chat_id=message.chat.id, photo=round_info['image'], reply_markup=get_answers_keyboard(round_info['answers']))
-            p2_msg1_del = await bot.send_photo(chat_id=oponent_id, photo=round_info['image'], reply_markup=get_answers_keyboard(round_info['answers']))
-
-            async with state.proxy() as data:
-                data['after_round_delete'].append(p1_msg1_del)
-
-            async with oponent_state.proxy() as data:
-                data['after_round_delete'].append(p2_msg1_del)
+            await message.delete()
 
 @dp.message_handler(state=(ClientStatesGroup.round1,ClientStatesGroup.round2,ClientStatesGroup.round3,ClientStatesGroup.round4,ClientStatesGroup.round5))
 async def play_in_room(message: types.Message, state: FSMContext):
@@ -207,11 +225,13 @@ async def play_in_room(message: types.Message, state: FSMContext):
         oponent_id = data['oponent']
         cur_answer = data['cur_answer']
         data['after_round_delete'].append(message)
+        ready = data['ready']
     round_info = json.loads(requests.get(f'http://127.0.0.1:8000/game/{match_id}/get_round/{round_id}').text)
-
-    if not cur_answer:
+    if not cur_answer and ready:
+        await ClientStatesGroup.next()
         async with state.proxy() as data:
             data['cur_answer'] = message.text
+            data['ready'] = False
         if round_info['country'] == message.text:
             async with state.proxy() as data:
                 data['correct_answers'] += 1
@@ -220,27 +240,25 @@ async def play_in_room(message: types.Message, state: FSMContext):
             msg3_del = await message.answer(text="Неправильный ответ")
         async with state.proxy() as data:
             data['after_round_delete'].append(msg3_del)
-        await ClientStatesGroup.next()
-
         oponent_state = dp.current_state(chat=oponent_id, user=oponent_id)
         async with oponent_state.proxy() as data:
             op_cur = data['cur_answer']
             op_last_bot_msg = data['last_bot_msg_id']
-
         if await state.get_state() == await oponent_state.get_state() and op_cur:
-
             async with state.proxy() as data:
                 data['cur_answer'] = None
                 data['round'] += 1
-
+                data['ready'] = False
             async with oponent_state.proxy() as data:
                 data['cur_answer'] = None
                 data['round'] += 1
-
+                data['ready'] = False
             if round_id == 5:
+                await asyncio.sleep(1)
                 all_msg_del = []
                 msg7_del = await bot.send_message(chat_id=message.chat.id, text=f"Противник ответил {op_cur}")
                 await bot.edit_message_text(chat_id=oponent_id, message_id=op_last_bot_msg, text=f"Противник ответил {message.text}")
+                await asyncio.sleep(3)
                 async with state.proxy() as data:
                     correct_answers = data['correct_answers']
                     data['after_round_delete'].append(msg7_del)
@@ -248,20 +266,19 @@ async def play_in_room(message: types.Message, state: FSMContext):
                 async with oponent_state.proxy() as data:
                     op_correct_answers = data['correct_answers']
                     all_msg_del.extend(data['after_round_delete'])
-
-                await state.set_state(ClientStatesGroup.finished_answer)
-                await oponent_state.set_state(ClientStatesGroup.finished_answer)
                 await bot.send_message(chat_id=message.chat.id, text=f"Вы ответили правильно на {correct_answers}/5 вопросов")
                 await bot.send_message(chat_id=message.chat.id, text=f"Противник ответил правильно на {op_correct_answers}/5 вопросов", reply_markup=get_end_match_kb())
                 await bot.send_message(chat_id=oponent_id, text=f"Вы ответили правильно на {op_correct_answers}/5 вопросов", reply_markup=get_end_match_kb())
                 await bot.send_message(chat_id=oponent_id, text=f"Противник ответил правильно на {correct_answers}/5 вопросов",)
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 for msg in all_msg_del:
                     await asyncio.sleep(0.1)
                     try:
                         await msg.delete()
-                    except:
+                    except Exception:
                         continue
+                await state.set_state(ClientStatesGroup.finished_answer)
+                await oponent_state.set_state(ClientStatesGroup.finished_answer)
             else:
                 await asyncio.sleep(1)
                 await bot.edit_message_text(chat_id=oponent_id, message_id=op_last_bot_msg, text=f"Противник ответил {message.text}")
@@ -270,8 +287,12 @@ async def play_in_room(message: types.Message, state: FSMContext):
                 await asyncio.sleep(3)
                 msg5_del = await bot.send_photo(chat_id=message.chat.id, photo=round_info['image'], reply_markup=get_answers_keyboard(round_info['answers']))
                 msg7_del = await bot.send_photo(chat_id=oponent_id, photo=round_info['image'], reply_markup=get_answers_keyboard(round_info['answers']))
+                await asyncio.sleep(1)
                 async with state.proxy() as data:
                     data['after_round_delete'].extend((msg4_del, msg5_del, msg7_del))
+                    data['ready'] = True
+                async with oponent_state.proxy() as data:
+                    data['ready'] = True
         else:
             msg = await bot.send_message(chat_id=message.chat.id, text="Ждём, пока противник закончит раунд")
             async with state.proxy() as data:
@@ -284,9 +305,12 @@ async def play_in_room(message: types.Message, state: FSMContext):
 
 @dp.message_handler(state=ClientStatesGroup.finished_answer)
 async def finished(message: types.Message, state: FSMContext):
-    await state.finish()
-    await message.answer("Спасибо за игру!")
-    await state.set_state(ClientStatesGroup.in_menu)
+    if message.text == "Завершить матч":
+        await state.finish()
+        await message.answer("Спасибо за игру!")
+        await ClientStatesGroup.in_menu.set()
+    else:
+        await message.delete()
 
 
 
