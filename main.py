@@ -1,47 +1,43 @@
-from starlette.responses import Response
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends, Response
 # from fastapi import WebSocket
 import flags.service as service
+from core.utils import get_db
+from sqlalchemy.orm import Session
+from core.db import SessionLocal
 
 app = FastAPI()
 
 
+@app.middleware("http")
+async def db_session_midddleware(request: Request, call_next):
+    response = Response("Internal server error", status_code=500)
+    try:
+        request.state.db = SessionLocal()
+        response = await call_next(request)
+    finally:
+        request.state.db.close()
+    return response
 
-@app.get("/create_game/{game_id}")
-async def root(game_id):
-    match_id = service.create_game(game_id)
+@app.get("/create_game/{game_id}/")
+async def root(game_id, db: Session = Depends(get_db)):
+    match_id = await service.create_game(db, game_id)
     return {"game_id": match_id}
 
-@app.get("/game/{game_id}/get_round/{round_id}")
-async def root(game_id, round_id):
-    r, answers = service.get_round_info(game_id, round_id)
+
+@app.get("/game/{game_id}/get_round/{round_id}/")
+async def root(game_id, round_id, db: Session = Depends(get_db)):
+    r, answers = await service.get_round_info(db, game_id, round_id)
     return {"country": r[0], "answers": answers, "image": r[1], "player1": r[2], "player2": r[3]}
 
-# @app.post("/game/{game_id}/get_round/{round_id}")
-# async def root(request: Request, game_id, round_id):
-#     body = request.json()
-#     service.write_answers(game_id, round_id, player1_id, player1_answer, player2_id, player2_answer)
-#     return
 
-# @app.get("/invite/{user_id}")
-# async def invite_user(user_id):
-#     return {"message": f"Game №:{game_id}"}
+@app.post("/game/{game_id}/get_round/{round_id}/")
+async def root(request: Request, game_id, round_id, db: Session = Depends(get_db)):
+    body = await request.json()
+    await service.write_answers(db, game_id, round_id, body['player_id'], body['player_answer'], body['correct_answer'])
+    return
 
-
-# @app.websocket("/ws")
-# async def websocket_endpoint(websocket: WebSocket):
-#     print('Accepting client connection...')
-#     await websocket.accept()
-#     while True:
-#         try:
-#             # Wait for any message from the client
-#             await websocket.receive_text()
-#             # Send message to the client
-#             resp = {'value': 'GAMEPLAY'}
-#             await websocket.send_json(resp)
-#         except Exception as ex:
-#             print('error:', ex)
-#             break
-#         print('Bye..')
+@app.get("/game/{game_id}/")
+async def get_results(request: Request, game_id, db: Session = Depends(get_db)):
+    body = await request.json()
+    user_result, oponent_result = await service.get_match_results(db, game_id, body['user_id'], body['oponent_id'])
+    return {"user_result": user_result, 'oponent_result': oponent_result}
