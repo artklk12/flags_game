@@ -44,3 +44,9 @@ async def get_match_results(db: Session, game_id, user_id, oponent_id):
     user = db.execute(text('SELECT COUNT(player_answer) FROM matches_rounds WHERE match_id = :match_id AND player_id = :player_id AND player_answer = correct_answer'), {'match_id': game_id, 'player_id': user_id}).fetchone()[0]
     oponent = db.execute(text('SELECT COUNT(player_answer) FROM matches_rounds WHERE match_id = :match_id AND player_id = :oponent_id AND player_answer = correct_answer'), {'match_id': game_id, 'oponent_id': oponent_id}).fetchone()[0]
     return user, oponent
+
+async def create_country(db: Session, title, image):
+    newCountry = Flag(title=title, image=image)
+    db.add(newCountry)
+    db.commit()
+    return
