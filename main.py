@@ -27,7 +27,7 @@ async def create_game(game_id, db: Session = Depends(get_db)):
 @app.get("/game/{game_id}/get_round/{round_id}/")
 async def get_round(game_id, round_id, db: Session = Depends(get_db)):
     r, answers = await service.get_round_info(db, game_id, round_id)
-    return {"country": r[0], "answers": answers, "image": r[1], "player1": r[2], "player2": r[3]}
+    return {"country": r[0].strip(), "answers": answers, "image": r[1], "player1": r[2], "player2": r[3]}
 
 
 @app.post("/game/{game_id}/get_round/{round_id}/")
