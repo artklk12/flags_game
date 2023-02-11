@@ -22,11 +22,15 @@ async def get_round_info(db: Session, game_id, round_id):
     round_field = f'matches.round{round_id}'
     q = text(f'SELECT title,image,player1,player2 FROM matches LEFT JOIN flags_cards ON {round_field} = flags_cards.title WHERE matches.id = :match_id')
     res = db.execute(q, {'match_id': game_id}).fetchone()
-    other = await get_other_countries(res[0])
+    other = await get_other_countries(res[0].strip())
     return res, other
 
 async def get_other_countries(answer):
     other_countries = countries[:]
+    print(other_countries is countries)
+    print("Нужынй элемент в списке?", answer in other_countries)
+    print("Нужынй элемент в изначальном списке?", answer in countries)
+    print(type(other_countries),other_countries, type(answer), answer)
     other_countries.remove(answer)
     other_countries = set(other_countries)
     answers = random.sample(other_countries, 3)
@@ -50,3 +54,4 @@ async def create_country(db: Session, title, image):
     db.add(newCountry)
     db.commit()
     return
+
