@@ -1,4 +1,0 @@
-services:
-- type: web
-  name: flags_server
-  env: docker
