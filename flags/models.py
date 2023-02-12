@@ -21,6 +21,11 @@ class Match(Base):
     round3 = Column(String)
     round4 = Column(String)
     round5 = Column(String)
+    round6 = Column(String)
+    round7 = Column(String)
+    round8 = Column(String)
+    round9 = Column(String)
+    round10 = Column(String)
 
 
 class Rounds(Base):
