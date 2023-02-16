@@ -1,5 +1,5 @@
 from core.db import Base
-from sqlalchemy import Column, String, Integer, ForeignKey
+from sqlalchemy import Column, String, Integer, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship
 
 
@@ -14,8 +14,8 @@ class Match(Base):
     __tablename__ = 'matches'
 
     id = Column(Integer, primary_key=True, index=True, unique=True)
-    player1 = Column(Integer)
-    player2 = Column(Integer)
+    player1 = Column(BigInteger)
+    player2 = Column(BigInteger)
     round1 = Column(String)
     round2 = Column(String)
     round3 = Column(String)
@@ -34,7 +34,7 @@ class Rounds(Base):
     id = Column(Integer, primary_key=True, index=True, unique=True)
     match_id = Column(Integer, ForeignKey('matches.id'))
     match = relationship('Match')
-    player_id = Column(Integer)
+    player_id = Column(BigInteger)
     round = Column(Integer)
     player_answer = Column(String)
     correct_answer = Column(String)

@@ -10,7 +10,11 @@ countries = ['ОАЭ', 'Андорра', 'Афганистан', 'Албания
 
 
 async def create_game(db: Session, game_id):
-    player_1, player_2 = game_id.split('x')
+    try:
+        player_1, player_2 = game_id.split('x')
+    except:
+        player_1 = game_id
+        player_2 = None
     match = random.sample(countries, 10)
     newGame = Match(player1=player_1, player2=player_2, round1=match[0], round2=match[1], round3=match[2], round4=match[3], round5=match[4], round6=match[5], round7=match[6], round8=match[7], round9=match[8], round10=match[9])
     db.add(newGame)
@@ -27,10 +31,6 @@ async def get_round_info(db: Session, game_id, round_id):
 
 async def get_other_countries(answer):
     other_countries = countries[:]
-    print(other_countries is countries)
-    print("Нужынй элемент в списке?", answer in other_countries)
-    print("Нужынй элемент в изначальном списке?", answer in countries)
-    print(type(other_countries),other_countries, type(answer), answer)
     other_countries.remove(answer)
     other_countries = set(other_countries)
     answers = random.sample(other_countries, 3)
@@ -44,9 +44,12 @@ async def write_answers(db: Session, game_id, round_id, player_id, player_answer
     db.commit()
     return
 
-async def get_match_results(db: Session, game_id, user_id, oponent_id):
+async def get_match_results(db: Session, game_id, user_id, oponent_id=None):
     user = db.execute(text('SELECT COUNT(player_answer) FROM matches_rounds WHERE match_id = :match_id AND player_id = :player_id AND player_answer = correct_answer'), {'match_id': game_id, 'player_id': user_id}).fetchone()[0]
-    oponent = db.execute(text('SELECT COUNT(player_answer) FROM matches_rounds WHERE match_id = :match_id AND player_id = :oponent_id AND player_answer = correct_answer'), {'match_id': game_id, 'oponent_id': oponent_id}).fetchone()[0]
+    if oponent_id:
+        oponent = db.execute(text('SELECT COUNT(player_answer) FROM matches_rounds WHERE match_id = :match_id AND player_id = :oponent_id AND player_answer = correct_answer'), {'match_id': game_id, 'oponent_id': oponent_id}).fetchone()[0]
+    else:
+        oponent = None
     return user, oponent
 
 async def create_country(db: Session, title, image):
